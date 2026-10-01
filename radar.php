@@ -38,7 +38,7 @@
 //       php radar.php verwijderen <bron-id>
 //       php radar.php bronnen
 
-const PRIJSRADAR_VERSIE = '2026.10.01-23'; // ophogen bij elke update: zo zie je op elke site of de nieuwste code draait
+const PRIJSRADAR_VERSIE = '2026.10.01-24'; // ophogen bij elke update: zo zie je op elke site of de nieuwste code draait
 // Instellingen per site in prijsradar-data/config.php, naast de database (een update raakt die map nooit). Oude plekken: config/config.php en ./config.php.
 $_cfg = null; foreach ([dirname(__DIR__) . '/prijsradar-data/config.php', __DIR__ . '/config/config.php', __DIR__ . '/config.php'] as $_c) if (is_file($_c)) { $_cfg = $_c; break; }
 if (!$_cfg) { if (PHP_SAPI !== 'cli') http_response_code(503); exit("Nog geen instellingen: zet config.php (vanuit config.voorbeeld.php) in de map prijsradar-data naast prijsradar en vul hem in voor deze site.\n"); }
