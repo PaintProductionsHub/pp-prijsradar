@@ -2,7 +2,7 @@
 
 Concurrentie-prijsmonitor voor de Lightspeed-shops van Paint Productions. PHP 7.4+, SQLite.
 
-**Lees eerst het hoofdstuk bovenaan `radar.php`** (hoe het in elkaar zit, waar wat hoort, harde regels).
+**Lees eerst het hoofdstuk bovenaan `radar.php`** (hoe het in elkaar zit, waar wat hoort, harde regels). Volledige technische documentatie: `DOCUMENTATIE.md`.
 
 ## Kort
 - Deze repo = alleen code, identiek op elke site. Plesk haalt hem op in `data.<domein>/prijsradar/`.
