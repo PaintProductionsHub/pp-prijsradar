@@ -1,0 +1,4 @@
+# Uitleg- en Git-bestanden niet via de browser tonen
+<FilesMatch "\.(md|gitignore)$">
+    Require all denied
+</FilesMatch>

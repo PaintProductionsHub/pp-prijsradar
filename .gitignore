@@ -1,0 +1,8 @@
+# Nooit in deze repo: per site, staat in prijsradar-data/ naast deze map
+config.php
+config/
+data/
+*.sqlite
+*.sqlite-*
+*.bak
+.DS_Store
