@@ -406,6 +406,9 @@ function lees_pagina(string $platform, string $h, string $url, array $kand, arra
             $vars[] = ['titel' => tekst($v['name'] ?? ''), 'prijs' => $p, 'voorraad' => stripos((string)($o['availability'] ?? ''), 'OutOfStock') === false ? 1 : 0, 'ext' => (string)($v['sku'] ?? $v['url'] ?? count($vars)), 'ean' => gtin($v)];
             if (!empty($v['url'])) $kinderen[] = pad_van($v['url']); }
     }
+    // Varianten die de shop zelf niet uit elkaar houdt (zelfde naam én prijs, bv. verf.nl: 4× "Mengkleur" met de witprijs):
+    // de echte naam en prijs staan vaak in het datablok van de app (Nuxt/Next). Alleen dan aanvullen, verder niets wijzigen.
+    if (count($vars) > 1) $vars = payload_verrijk($vars, $h);
     // Enkelvoudig product: prijs uit de pagina
     if (!$vars) {
         $o = $prod['offers'] ?? null; if (isset($o[0])) $o = $o[0]; $offer1 = is_array($o) ? $o : null;
@@ -433,6 +436,79 @@ function lees_pagina(string $platform, string $h, string $url, array $kand, arra
                  'excl' => !empty($excl), 'bevestigd' => $bevestigd, 'n' => count($vars), 'ref' => (bool)$ref];
     return ['naam' => $naam, 'merk' => (string)$merk, 'merkok' => (bool)$merkok, 'varianten' => $vars, 'kinderen' => $kinderen, 'controle' => $controle,
             'maatkeuze' => $keuze, 'inhoud_bron' => $inhoudBron, 'pagina_id' => pagina_id($h, is_scalar($prod['sku'] ?? null) ? (string)$prod['sku'] : '')];
+}
+
+// ---------- datablok van JavaScript-apps (Nuxt, Next.js) ----------
+// Moderne shops bouwen de pagina in de browser op uit een JSON-blok in de HTML. Daar staan per variant vaak velden die
+// JSON-LD en de zichtbare prijs missen (verf.nl: "basepaintname" = KLEURGROEP 0-3, "price_b2c_ex" = prijs excl. btw).
+// Uitkomst: lijst van platte objecten (alleen tekst/getal-velden), zodat we per variant op sku kunnen zoeken.
+function payload_objecten(string $h): array {
+    $uit = [];
+    if (preg_match('#<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>#is', $h, $m) && is_array($a = json_decode($m[1], true))) {
+        // Nuxt 3 (devalue): één platte array; waarden in objecten zijn verwijzingen (index) naar die array
+        $waarde = function ($i, $d = 0) use (&$waarde, $a) {
+            if (!is_int($i) || $i < 0 || !array_key_exists($i, $a)) return null;
+            $v = $a[$i];
+            if (is_array($v) && isset($v[0]) && is_string($v[0]) && in_array($v[0], ['Reactive', 'ShallowReactive', 'Ref', 'ShallowRef'], true) && $d < 3) return $waarde($v[1] ?? -1, $d + 1);
+            return is_scalar($v) || $v === null ? $v : null;
+        };
+        foreach ($a as $o) {
+            if (!is_array($o) || !$o || array_keys($o) === range(0, count($o) - 1)) continue; // alleen objecten
+            $plat = []; foreach ($o as $k => $i) { $w = $waarde($i); if ($w !== null) $plat[(string)$k] = $w; }
+            if (count($plat) >= 2) $uit[] = $plat;
+        }
+    }
+    if (preg_match('#<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>#is', $h, $m) && is_array($d = json_decode($m[1], true))) {
+        $loop = function ($x) use (&$loop, &$uit) {
+            if (!is_array($x)) return;
+            $plat = []; foreach ($x as $k => $v) if (is_scalar($v)) $plat[(string)$k] = $v;
+            if (count($plat) >= 2 && !isset($x[0])) $uit[] = $plat;
+            foreach ($x as $v) if (is_array($v)) $loop($v);
+        };
+        $loop($d);
+    }
+    return $uit;
+}
+// Varianten met dezelfde naam én prijs aanvullen uit het datablok: koppelen op sku (= ext van de variant),
+// prijs uit een prijsveld (excl. btw → incl.), en de velden die tussen die varianten verschillen als extra naam.
+function payload_verrijk(array $vars, string $h): array {
+    $groep = []; foreach ($vars as $i => $v) $groep[$v['titel'] . '|' . round((float)$v['prijs'], 2)][] = $i;
+    $dubbel = array_filter($groep, function ($g) { return count($g) > 1; });
+    if (!$dubbel) return $vars;
+    $per = []; foreach (payload_objecten($h) as $o) foreach (['sku', 'SKU', 'variantSku', 'variant_sku'] as $sk) if (isset($o[$sk]) && is_scalar($o[$sk]) && (string)$o[$sk] !== '') { $per[(string)$o[$sk]] = $o; break; }
+    if (!$per) return $vars;
+    $prijs_van = function (array $o): ?float {
+        $beste = null; $excl = false;
+        foreach ($o as $k => $v) {
+            if (!is_numeric($v) || (float)$v <= 0 || !preg_match('/price|prijs|preis/i', $k) || preg_match('/old|was|from|list|msrp|compare|base_?unit|per_?(l|kg|liter)|unit_?price/i', $k)) continue;
+            $sale = (bool)preg_match('/sale|special|actie|aanbieding/i', $k);
+            if ($beste === null || ($sale && !$beste[1])) { $beste = [(float)$v, $sale]; $excl = (bool)preg_match('/(^|_)(ex|excl|exclusive|ex_?vat|net|netto)(_|$)/i', $k); }
+        }
+        if ($beste === null) return null;
+        return round($excl ? $beste[0] * (1 + btw_bron() / 100) : $beste[0], 2);
+    };
+    foreach ($dubbel as $idx) {
+        $objs = []; foreach ($idx as $i) { $ext = (string)($vars[$i]['ext'] ?? ''); if ($ext === '' || !isset($per[$ext])) continue 2; $objs[$i] = $per[$ext]; }
+        // velden die per variant verschillen (geen id's, geen sku, geen lange of JSON-waarden) = wat ze onderscheidt
+        $sleutels = array_keys(reset($objs)); $onderscheid = [];
+        foreach ($sleutels as $k) {
+            if (preg_match('/(^|_)(id|uuid|sku|url|image|slug|ean|gtin|name|title|naam)(_|$)|_id$|Id$/i', $k)) continue;
+            $w = array_map(function ($o) use ($k) { return $o[$k] ?? null; }, $objs);
+            if (count(array_unique(array_map('strval', $w))) < 2) continue;
+            $ok = true; foreach ($w as $x) if (!is_string($x) || $x === '' || strlen($x) > 40 || preg_match('/^[\[{]|^[0-9a-f-]{20,}$/i', $x) || is_numeric($x)) { $ok = false; break; }
+            if ($ok) $onderscheid[] = $k;
+        }
+        // Alleen aanvullen als het datablok echt verschillende prijzen kent (verf.nl Keim: kleurgroep 0-3). Zelfde prijs per variant
+        // (bv. Jotun A/B/C-base) = niets verloren; dan blijft alles exact zoals het was, zodat bestaande koppelingen niet verschuiven.
+        $pp = array_map($prijs_van, $objs); if (in_array(null, $pp, true) || count(array_unique(array_map(function ($x) { return round($x); }, $pp))) < 2) continue;
+        foreach ($objs as $i => $o) {
+            $p = $prijs_van($o); $oud = (float)$vars[$i]['prijs'];
+            if ($p !== null && $oud > 0 && $p / $oud > 0.4 && $p / $oud < 4) $vars[$i]['prijs'] = $p; // alleen een geloofwaardige prijs overnemen
+            $extra = array_map(function ($k) use ($o) { return tekst((string)$o[$k]); }, $onderscheid);
+            if ($extra) $vars[$i]['titel'] .= ' / ' . implode(' / ', $extra);
+        }
+    }
+    return $vars;
 }
 
 // ---------- overige maten (Shopware-maatkeuze) ----------

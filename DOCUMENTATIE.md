@@ -1,6 +1,6 @@
 # Prijsradar: technische documentatie
 
-Stand: 1 oktober 2026, versie `2026.10.01-24`.
+Stand: 9 oktober 2026, versie `2026.10.09-25`.
 Deze repo is openbaar: hier staan nooit sleutels, wachtwoorden, configs of databases. Die leven per site op de server.
 
 ---
@@ -203,6 +203,7 @@ SQLite in `prijsradar-data/radar-<site>.sqlite` (site met punten als streepjes).
 | BigCommerce | `bigcommerce` | varianten-API met storefront-token |
 | PrestaShop | `prestashop`, `static_token` | pagina's |
 | Shopware 5/6, ePages, onbekend | rest | JSON-LD, microdata (`itemProp`, ook kleine letters), `og:price:amount` |
+| Nuxt / Next.js-apps (bv. verf.nl) | `__NUXT_DATA__`, `__NEXT_DATA__` | aanvulling (`payload_verrijk()`): hebben varianten na de gewone lezing dezelfde naam én prijs, dan zoekt de radar ze op sku in het datablok van de app en neemt de echte prijs (prijsvelden excl. btw × btw) en het onderscheidende veld (bv. `KLEURGROEP 3`) over. Alleen als het datablok echt verschillende prijzen kent; anders blijft alles exact gelijk |
 | Cloudflare-controle | `cf-mitigated`, `_cf_chl_opt` | **niet te lezen** (bv. verfmenger.com); de radar meldt het en voegt niets half toe |
 
 **Volledigheid**: twee onafhankelijke routes (sitemap en platformcatalogus/zoekfunctie), daarna elke productpagina. Dekking per run wordt bewaard.
@@ -322,6 +323,7 @@ php radar.php bronnen                         lijst
 | 01-10 | v21 | config verhuist naar `prijsradar-data/` |
 | 01-10 | v22-v23 | prijsgroepen (idee en regels: beheerder Keim) opgenomen; Keim-jargon van code naar config (`prijsgroep_regels`); architectuurregels bovenaan `radar.php` |
 | 01-10 | v24 | uitrol via GitHub + Plesk Git op alle sites; Dekking toont welk config-bestand gelezen wordt |
+| 09-10 | v25 | verf.nl gaf alle kleurgroepen dezelfde naam ("Mengkleur") en de witprijs; nu uit het Nuxt-datablok: Soldalan 2,5 kg PG0-PG3 = € 69,70 / 79,18 / 88,33 / 120,26. Jotun-pagina's op verf.nl (A/B/C-base, zelfde prijs) blijven identiek |
 
 **Lessen**
 - Config of data nooit in een update. Sinds Git structureel onmogelijk.
@@ -333,3 +335,4 @@ php radar.php bronnen                         lijst
 - Duitse shops zetten winkeltekst in de productnaam; exacte woordmatching faalt daar zonder opschoning.
 - EAN is in DE nutteloos als extra check: vrijwel geen shop toont hem.
 - Cloudflare-beschermde shops zijn met deze aanpak niet te lezen; identieke prijzen bij zustershops dekken dat vaak af.
+- Een shop kan in zijn eigen JSON-LD foute prijzen zetten (verf.nl: 4 kleurgroepen met dezelfde witprijs). Het datablok van de app is dan de waarheid. Symptoom in de database: binnen één product meerdere varianten met dezelfde naam én prijs.
